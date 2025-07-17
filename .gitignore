@@ -1,0 +1,148 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+
+# PyBuilder
+target/
+.pybuilder/
+.pybuilder/plugins/
+target/reports/
+target/venv/
+target/dist/
+target/tmp/
+target/site/
+target/dependencies/
+
+# Coverage
+.coverage
+htmlcov/
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+.tox/
+.nox/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.spyderproject
+.spyproject
+.ropeproject
+.mr.developer.cfg
+.project
+.pydevproject
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Installers
+chrome_installer.exe
+
+# Backup files
+*.backup
+*.remote
+*.bak
+*~
+
+# Logs
+*.log
+logs/
+log/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Database
+*.db
+*.sqlite3
+*.sqlite
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyBuilder specific
+.pybuilder/plugins/
+target/reports/
+target/venv/
+
+# FastAPI specific
+__pycache__/
+*.pyc
+
+# Local development
+.env.local
+.python-version
+
+# Documentation
+docs/_build/
+docs/api/
+
+# Profiling
+*.prof
+*.lprof
+
+# Package specific
+dist/
+build/
+*.egg-info/
+*.egg
+*.manifest
+*.spec
+pip-wheel-metadata/
+share/python-wheels/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+.pytest_cache/
+__pypackages__/
+
+# Session files
+.session.vim
+Session.vim
+
+# Cython debug symbols
+cython_debug/
