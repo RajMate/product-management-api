@@ -1,0 +1,167 @@
+# GitLab CI/CD Configuration for Product Management API
+
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
+stages:
+  - test
+  - static_analysis
+  - security_scan
+  - dockerfile_scan
+  - sast
+  - publish
+  - image_build
+  - image_scan
+  - image_push
+  - deploy_dev
+  - deploy_prod
+
+variables:
+  # Pipeline configuration variables
+  DOCKER_TLS_CERTDIR: ""  # Fix for GitLab Docker-in-Docker
+  IMAGE_TAG: $CI_COMMIT_SHA
+
+# Cache pip dependencies between jobs
+cache:
+  paths:
+    - .pip-cache/
+
+# Unit Test stage
+unit_test:
+  stage: test
+  image: python:3.9
+  script:
+    - pip install -r requirements.txt --cache-dir=.pip-cache
+    - pip install pytest pytest-cov httpx --cache-dir=.pip-cache
+    - mkdir -p src/unittest/python
+    - pytest src/unittest/python --junitxml=junit-report.xml
+  artifacts:
+    reports:
+      junit: junit-report.xml
+    paths:
+      - junit-report.xml
+  allow_failure: true
+  only:
+    - main
+    - merge_requests
+
+# Code Coverage stage
+code_coverage:
+  stage: test
+  image: python:3.9
+  script:
+    - pip install -r requirements.txt --cache-dir=.pip-cache
+    - pip install pytest pytest-cov httpx --cache-dir=.pip-cache
+    - pytest --cov=src/main/python --cov-report=xml
+  artifacts:
+    paths:
+      - coverage.xml
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  only:
+    - main
+    - merge_requests
+
+# Static Analysis stage
+static_analysis:
+  stage: static_analysis
+  image: python:3.9
+  script:
+    - pip install pylint flake8 --cache-dir=.pip-cache
+    - flake8 src/main/python --output-file=flake8-report.txt
+    - pylint src/main/python --output=pylint-report.txt || true
+  artifacts:
+    paths:
+      - flake8-report.txt
+      - pylint-report.txt
+  only:
+    - main
+    - merge_requests
+  allow_failure: true
+
+# Security Scanning stage
+security_scanning:
+  stage: security_scan
+  image: python:3.9
+  script:
+    - pip install bandit safety --cache-dir=.pip-cache
+    - bandit -r src/main/python -f json -o bandit-report.json || true
+    - safety check -r requirements.txt --json > safety-report.json || true
+  artifacts:
+    paths:
+      - bandit-report.json
+      - safety-report.json
+  only:
+    - main
+    - merge_requests
+  allow_failure: true
+
+# Dockerfile Scanning stage
+dockerfile_scan:
+  stage: dockerfile_scan
+  image: hadolint/hadolint:latest-debian
+  script:
+    - hadolint Dockerfile --format json > hadolint-report.json || true
+  artifacts:
+    paths:
+      - hadolint-report.json
+  only:
+    - main
+    - merge_requests
+  allow_failure: true
+
+# Build and Publish stage
+publish:
+  stage: publish
+  image: python:3.9
+  script:
+    - pip install pybuilder --cache-dir=.pip-cache
+    - pip install -r requirements.txt --cache-dir=.pip-cache
+    - python -m pybuilder.cli publish
+  artifacts:
+    paths:
+      - target/dist/*
+  only:
+    - main
+
+# Docker Image Build stage
+image_build:
+  stage: image_build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  script:
+    - docker build -t product-management:$IMAGE_TAG .
+    - docker save product-management:$IMAGE_TAG -o product-management-image.tar
+  artifacts:
+    paths:
+      - product-management-image.tar
+  only:
+    - main
+
+# Deploy to Development Environment
+deploy_dev:
+  stage: deploy_dev
+  image: python:3.9
+  script:
+    - echo "Deploying to development environment"
+  environment:
+    name: development
+    url: http://dev.product-management-api.example.com
+  only:
+    - main
+
+# Deploy to Production Environment
+deploy_prod:
+  stage: deploy_prod
+  image: python:3.9
+  script:
+    - echo "Deploying to production environment"
+  environment:
+    name: production
+    url: http://product-management-api.example.com
+  only:
+    - main
+  when: manual
