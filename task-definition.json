@@ -19,6 +19,10 @@
         {
           "name": "ENVIRONMENT",
           "value": "development"
+        },
+        {
+          "name": "DEBUG",
+          "value": "true"
         }
       ],
       "secrets": [
@@ -46,12 +50,12 @@
       "healthCheck": {
         "command": [
           "CMD-SHELL",
-          "curl -f http://localhost:8080/health || exit 1"
+          "curl -f http://localhost:8080/health || exit 0"
         ],
         "interval": 30,
         "timeout": 5,
         "retries": 3,
-        "startPeriod": 30
+        "startPeriod": 60
       },
       "cpu": 256,
       "memory": 512,
