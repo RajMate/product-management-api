@@ -1,48 +1,36 @@
 name: CI/CD Pipeline
 
+env:
+  IMAGE_TAG: ${{ github.sha }}
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+  ECR_REPOSITORY: product-management
+  ECS_CLUSTER: product-management-cluster
+  ECS_SERVICE: product-management-service
+  ECS_TASK_DEFINITION: product-management-task-definition
+  DB_HOST: ${{ secrets.DB_HOST }}
+  DB_PORT: ${{ secrets.DB_PORT }}
+  DB_NAME: ${{ secrets.DB_NAME }}
+  DB_USER: ${{ secrets.DB_USER }}
+  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  LOAD_BALANCER_DNS: ${{ secrets.LOAD_BALANCER_DNS }}
+  VPC_ID: ${{ secrets.VPC_ID }}
+  SUBNET_IDS: ${{ secrets.SUBNET_IDS }}
+  SECURITY_GROUP_IDS: ${{ secrets.SECURITY_GROUP_IDS }}
+
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
-env:
-  # Pipeline configuration variables
-  IMAGE_TAG: ${{ github.sha }}
-  
-  # AWS Configuration - Set these in GitHub repository secrets
-  AWS_DEFAULT_REGION: us-east-1
-  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-  
-  # ECS Resources - Set these in GitHub repository secrets
-  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-  ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
-  ECS_SERVICE_DEV: ${{ secrets.ECS_SERVICE_DEV }}
-  ECS_SERVICE_PROD: ${{ secrets.ECS_SERVICE_PROD }}
-  ECS_TASK_DEFINITION_DEV: ${{ secrets.ECS_TASK_DEFINITION_DEV }}
-  ECS_TASK_DEFINITION_PROD: ${{ secrets.ECS_TASK_DEFINITION_PROD }}
-  
-  # Database Configuration - Set these in GitHub repository secrets
-  DB_HOST_DEV: ${{ secrets.DB_HOST_DEV }}
-  DB_HOST_PROD: ${{ secrets.DB_HOST_PROD }}
-  DB_PASSWORD_DEV: ${{ secrets.DB_PASSWORD_DEV }}
-  DB_PASSWORD_PROD: ${{ secrets.DB_PASSWORD_PROD }}
-  
-  # Load Balancer Configuration - Set these in GitHub repository secrets
-  TARGET_GROUP_ARN: ${{ secrets.TARGET_GROUP_ARN }}
-  PROD_TARGET_GROUP_ARN: ${{ secrets.PROD_TARGET_GROUP_ARN }}
-  
-  # Network Configuration - Set these in GitHub repository secrets
-  SUBNET_ID_1: ${{ secrets.SUBNET_ID_1 }}
-  SUBNET_ID_2: ${{ secrets.SUBNET_ID_2 }}
-  SECURITY_GROUP_ID: ${{ secrets.SECURITY_GROUP_ID }}
+  workflow_dispatch:
 
 jobs:
   secret_scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -58,7 +46,7 @@ jobs:
   unit_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -82,7 +70,7 @@ jobs:
   code_coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -104,7 +92,7 @@ jobs:
   static_analysis:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -123,7 +111,7 @@ jobs:
   security_scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -182,7 +170,7 @@ jobs:
   dockerfile_scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Run hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
@@ -251,12 +239,16 @@ jobs:
 
   aws_auth:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
+          audience: sts.amazonaws.com
       - name: Verify AWS authentication
         run: |
           aws sts get-caller-identity
@@ -266,7 +258,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [secret_scan, unit_test, static_analysis, security_scan, dockerfile_scan]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Build Docker image
@@ -291,7 +283,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [image_build]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Download Docker image
         uses: actions/download-artifact@v4
         with:
@@ -327,7 +319,7 @@ jobs:
       name: development
       url: http://dev.product-management-api.example.com
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Download Docker image
         uses: actions/download-artifact@v4
         with:
@@ -348,7 +340,7 @@ jobs:
       name: production
       url: http://product-management-api.example.com
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Download Docker image
         uses: actions/download-artifact@v4
         with:
