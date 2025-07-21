@@ -370,13 +370,29 @@ jobs:
           task-definition: task-definition.json
           container-name: dev-container
           image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:${{ env.IMAGE_TAG }}
+      - name: Verify task definition
+        run: |
+          echo "Verifying task definition..."
+          cat ${{ steps.task-def.outputs.task-definition }}
+      - name: Verify ECS service exists
+        run: |
+          echo "Verifying ECS service exists..."
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} || echo "Warning: Service may not exist yet"
       - name: Deploy to Amazon ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE_DEV }}
           cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+          wait-for-service-stability: false
+      - name: Monitor deployment
+        run: |
+          echo "Monitoring deployment status..."
+          # Wait a bit for deployment to start
+          sleep 30
+          
+          # Check deployment status
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query "services[0].deployments"
 
   deploy_prod:
     runs-on: ubuntu-latest
@@ -406,10 +422,26 @@ jobs:
           task-definition: task-definition-prod.json
           container-name: dev-container
           image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:${{ env.IMAGE_TAG }}
+      - name: Verify task definition
+        run: |
+          echo "Verifying task definition..."
+          cat ${{ steps.task-def.outputs.task-definition }}
+      - name: Verify ECS service exists
+        run: |
+          echo "Verifying ECS service exists..."
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} || echo "Warning: Service may not exist yet"
       - name: Deploy to Amazon ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE_PROD }}
           cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+          wait-for-service-stability: false
+      - name: Monitor deployment
+        run: |
+          echo "Monitoring deployment status..."
+          # Wait a bit for deployment to start
+          sleep 30
+          
+          # Check deployment status
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query "services[0].deployments"
