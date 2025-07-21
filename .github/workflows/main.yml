@@ -9,7 +9,7 @@ env:
   AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
   
   # ECS Resources - Set these in GitHub repository secrets
-  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  ECR_REPOSITORY: dev-user-app-repo
   ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
   ECS_SERVICE_DEV: ${{ secrets.ECS_SERVICE_DEV }}
   ECS_SERVICE_PROD: ${{ secrets.ECS_SERVICE_PROD }}
@@ -313,18 +313,17 @@ jobs:
       - name: Tag and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
           # Tag the local image with the ECR repository
-          docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/dev-user-app-repo:$IMAGE_TAG
+          docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/dev-user-app-repo:latest
           
           # Push the image to ECR
           echo "Pushing image to ECR..."
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "::set-output name=ecr-image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker push $ECR_REGISTRY/dev-user-app-repo:$IMAGE_TAG
+          docker push $ECR_REGISTRY/dev-user-app-repo:latest
+          echo "::set-output name=ecr-image::$ECR_REGISTRY/dev-user-app-repo:$IMAGE_TAG"
       - name: Save Docker image
         run: |
           docker save product-management:${{ env.IMAGE_TAG }} > product-management-image.tar
