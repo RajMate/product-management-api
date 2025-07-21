@@ -1,0 +1,49 @@
+{
+  "cluster": "product-management-cluster",
+  "serviceName": "product-management-service",
+  "taskDefinition": "product-management-task",
+  "loadBalancers": [
+    {
+      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:294895595987:targetgroup/product-management-tg/abcdef1234567890",
+      "containerName": "product-management-container",
+      "containerPort": 8080
+    }
+  ],
+  "desiredCount": 2,
+  "launchType": "FARGATE",
+  "platformVersion": "LATEST",
+  "deploymentConfiguration": {
+    "deploymentCircuitBreaker": {
+      "enable": true,
+      "rollback": true
+    },
+    "maximumPercent": 200,
+    "minimumHealthyPercent": 100
+  },
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "${SUBNET_ID_1}",
+        "${SUBNET_ID_2}"
+      ],
+      "securityGroups": [
+        "${SECURITY_GROUP_ID}"
+      ],
+      "assignPublicIp": "ENABLED"
+    }
+  },
+  "healthCheckGracePeriodSeconds": 60,
+  "schedulingStrategy": "REPLICA",
+  "enableECSManagedTags": true,
+  "propagateTags": "SERVICE",
+  "tags": [
+    {
+      "key": "Environment",
+      "value": "Development"
+    },
+    {
+      "key": "Application",
+      "value": "ProductManagement"
+    }
+  ]
+}

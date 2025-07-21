@@ -1,0 +1,76 @@
+{
+  "family": "product-management-task",
+  "executionRoleArn": "arn:aws:iam::294895595987:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::294895595987:role/ecsTaskRole",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "product-management-container",
+      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${IMAGE_TAG}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "hostPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "ENVIRONMENT",
+          "value": "development"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DB_USERNAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:product-management/dev/db-credentials:username::"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:product-management/dev/db-credentials:password::"
+        },
+        {
+          "name": "DB_HOST",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:product-management/dev/db-credentials:host::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/product-management",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:8080/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "cpu": 256,
+      "memory": 512,
+      "memoryReservation": 256
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "512",
+  "memory": "1024",
+  "tags": [
+    {
+      "key": "Environment",
+      "value": "Development"
+    },
+    {
+      "key": "Application",
+      "value": "ProductManagement"
+    }
+  ]
+}
