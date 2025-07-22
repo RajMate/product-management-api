@@ -239,7 +239,7 @@ jobs:
             echo "<p>Info Issues: $INFO_ISSUES</p>" >> dockerfile-report.html
             echo "<h2>Details</h2>" >> dockerfile-report.html
             
-            jq -r '.[] | "<div class=\"issue \(.level)\"><h3>\(.level | ascii_upcase): \(.code)</h3><p><strong>Line:</strong> \(.line // "N/A")</p><p><strong>Message:</strong> \(.message)</p></div>"' hadolint-basic-report.json >> dockerfile-report.html 2>/dev/null || {
+            jq -r '.[] | "<div class=\"issue \(.level)\"><h3>\(.level | ascii_upcase): \(.code)</h3><p><strong>Line:</strong> \(.line // \"N/A\")</p><p><strong>Message:</strong> \(.message)</p></div>"' hadolint-basic-report.json >> dockerfile-report.html 2>/dev/null || {
               for issue in $(jq -c '.[]' hadolint-basic-report.json 2>/dev/null); do
                 level=$(echo $issue | jq -r '.level // "unknown"')
                 code=$(echo $issue | jq -r '.code // "N/A"')
