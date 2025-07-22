@@ -209,13 +209,14 @@ jobs:
           aws sts get-caller-identity
           echo "AWS authentication successful"
 
-  image_build:
+  image_build_and_scan:
     runs-on: ubuntu-latest
     needs: [secret_scan, unit_test, security_scan]
-    # Add permissions required for OIDC
+    # Add permissions required for OIDC and security events
     permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
+      id-token: write        # Required for requesting the JWT
+      contents: read         # Required for actions/checkout
+      security-events: write # Required for uploading SARIF results
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS credentials
@@ -238,16 +239,35 @@ jobs:
           tags: product-management:${{ env.IMAGE_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Tag and push image to Amazon ECR
+      - name: Run Trivy vulnerability scanner (local image)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: product-management:${{ env.IMAGE_TAG }}
+          format: 'table'
+          exit-code: '0'  # Don't fail build on vulnerabilities
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+      - name: Run Trivy with SARIF output (local image)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: product-management:${{ env.IMAGE_TAG }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+      - name: Tag and push image to Amazon ECR (after scan)
         run: |
-          # Tag and push single image with commit SHA
+          # Tag and push single image with commit SHA only after successful scan
           docker tag product-management:${{ env.IMAGE_TAG }} 294895595987.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${{ env.IMAGE_TAG }}
           
           # Push single tag to ECR
-          echo "Pushing image with commit SHA tag to ECR..."
+          echo "Pushing scanned image with commit SHA tag to ECR..."
           docker push 294895595987.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${{ env.IMAGE_TAG }}
           
-          echo "Image pushed successfully to ECR!"
+          echo "Scanned image pushed successfully to ECR!"
           echo "Image available at: 294895595987.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${{ env.IMAGE_TAG }}"
       - name: Save Docker image
         run: |
@@ -258,46 +278,10 @@ jobs:
           name: docker-image
           path: product-management-image.tar
 
-  image_scan:
-    runs-on: ubuntu-latest
-    needs: [image_build]
-    # Add permissions for CodeQL SARIF upload
-    permissions:
-      security-events: write  # Required for uploading SARIF results
-      contents: read         # Required for actions/checkout
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download Docker image
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-      - name: Load Docker image
-        run: |
-          docker load -i product-management-image.tar
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: product-management:${{ env.IMAGE_TAG }}
-          format: 'table'
-          exit-code: '0'  # Changed to 0 to prevent build failure
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-      - name: Run Trivy with SARIF output
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 294895595987.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${{ env.IMAGE_TAG }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
-
   # Simplified deployment jobs for GitHub Actions
   deploy_dev:
     runs-on: ubuntu-latest
-    needs: [image_scan]
+    needs: [image_build_and_scan]
     # Add permissions required for OIDC
     permissions:
       id-token: write  # This is required for requesting the JWT
