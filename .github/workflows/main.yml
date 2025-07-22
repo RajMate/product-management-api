@@ -307,19 +307,25 @@ jobs:
           task-definition: task-definition.json
           container-name: product-management-container
           image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:${{ env.IMAGE_TAG }}
-      - name: Check and handle ECS service status
+      - name: Force delete and recreate ECS service (to clear SSM cache)
         run: |
           echo "Checking ECS service status..."
           SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
           echo "Service status: $SERVICE_STATUS"
           
-          if [ "$SERVICE_STATUS" = "INACTIVE" ] || [ "$SERVICE_STATUS" = "NOT_FOUND" ]; then
-            echo "Service is inactive or not found. Creating/updating service..."
-            
-            # Register the task definition and get ARN
-            echo "Registering task definition..."
-            TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
-            echo "Task definition ARN: $TASK_DEF_ARN"
+          # Force delete existing service if it exists
+          if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
+            echo "Deleting existing service to clear any cached configurations..."
+            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_DEV }} --desired-count 0
+            aws ecs delete-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_DEV }}
+            echo "Waiting for service deletion..."
+            sleep 30
+          fi
+          
+          # Register the task definition and get ARN
+          echo "Registering new task definition..."
+          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Task definition ARN: $TASK_DEF_ARN"
             
             # Create or update service
             aws ecs create-service \
@@ -385,19 +391,25 @@ jobs:
           task-definition: task-definition-prod.json
           container-name: product-management-container
           image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:${{ env.IMAGE_TAG }}
-      - name: Check and handle ECS service status (Production)
+      - name: Force delete and recreate ECS service (Production - to clear SSM cache)
         run: |
           echo "Checking production ECS service status..."
           SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
           echo "Service status: $SERVICE_STATUS"
           
-          if [ "$SERVICE_STATUS" = "INACTIVE" ] || [ "$SERVICE_STATUS" = "NOT_FOUND" ]; then
-            echo "Production service is inactive or not found. Creating/updating service..."
-            
-            # Register the task definition and get ARN
-            echo "Registering production task definition..."
-            TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
-            echo "Task definition ARN: $TASK_DEF_ARN"
+          # Force delete existing service if it exists
+          if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
+            echo "Deleting existing production service to clear any cached configurations..."
+            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_PROD }} --desired-count 0
+            aws ecs delete-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_PROD }}
+            echo "Waiting for production service deletion..."
+            sleep 30
+          fi
+          
+          # Register the task definition and get ARN
+          echo "Registering production task definition..."
+          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Task definition ARN: $TASK_DEF_ARN"
             
             # Create or update service
             aws ecs create-service \
