@@ -51,8 +51,8 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          # Scan filesystem instead of git diff to avoid BASE/HEAD same commit error
-          extra_args: --debug --only-verified --no-git
+          # Use filesystem scanning to avoid BASE/HEAD same commit error
+          extra_args: --debug --only-verified filesystem
 
   unit_test:
     runs-on: ubuntu-latest
