@@ -19,20 +19,26 @@
         {
           "name": "ENVIRONMENT",
           "value": "development"
-        }
-      ],
-      "secrets": [
+        },
         {
           "name": "DB_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:username::"
+          "value": "admin"
         },
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:password::"
+          "value": "password123"
         },
         {
           "name": "DB_HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:host::"
+          "value": "localhost"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "product_management_dev"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
         }
       ],
       "logConfiguration": {

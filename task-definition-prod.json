@@ -19,20 +19,26 @@
         {
           "name": "ENVIRONMENT",
           "value": "production"
-        }
-      ],
-      "secrets": [
+        },
         {
           "name": "DB_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/prod/db-credentials:username::"
+          "value": "prod_admin"
         },
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/prod/db-credentials:password::"
+          "value": "prod_password123"
         },
         {
           "name": "DB_HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/prod/db-credentials:host::"
+          "value": "prod-db.example.com"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "product_management_prod"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
         }
       ],
       "logConfiguration": {
