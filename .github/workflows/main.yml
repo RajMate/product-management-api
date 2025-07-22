@@ -46,13 +46,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history for TruffleHog
-      - name: Run Trufflehog
+          fetch-depth: 0
+      - name: Run Trufflehog filesystem scan
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          # Use filesystem scanning to avoid BASE/HEAD same commit error
-          extra_args: --debug --only-verified filesystem
+          extra_args: filesystem --debug --only-verified ./
 
   unit_test:
     runs-on: ubuntu-latest
@@ -123,10 +122,9 @@ jobs:
 
   aws_auth:
     runs-on: ubuntu-latest
-    # Add permissions required for OIDC
     permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS credentials
@@ -138,15 +136,14 @@ jobs:
       - name: Test AWS authentication
         run: |
           aws sts get-caller-identity
-          echo "AWS authentication successful!"
+          echo \"AWS authentication successful!\"
 
   image_build:
     runs-on: ubuntu-latest
     needs: [secret_scan, unit_test, code_coverage, security_scan, aws_auth]
-    # Add permissions required for OIDC
     permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
+      id-token: write
+      contents: read
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
       image-tags: ${{ steps.generate-tags.outputs.all-tags }}
@@ -166,77 +163,44 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
-          echo "Building Docker image..."
+          echo \"Building Docker image...\"
           docker build -t product-management:$IMAGE_TAG .
-          echo "Docker image built successfully!"
+          echo \"Docker image built successfully!\"
       - name: Generate unique image tags
         id: generate-tags
         run: |
-          # Generate timestamp in UTC
-          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
-          
-          # Create multiple unique tags
-          COMMIT_TAG="commit-${{ env.IMAGE_TAG }}"
-          BUILD_TAG="build-${{ env.BUILD_NUMBER }}"
-          TIMESTAMP_TAG="ts-${TIMESTAMP}"
-          VERSION_TAG="v1.0.${{ env.BUILD_NUMBER }}"
-          
-          echo "commit-tag=${COMMIT_TAG}" >> $GITHUB_OUTPUT
-          echo "build-tag=${BUILD_TAG}" >> $GITHUB_OUTPUT
-          echo "timestamp-tag=${TIMESTAMP_TAG}" >> $GITHUB_OUTPUT
-          echo "version-tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
-          echo "latest-tag=latest" >> $GITHUB_OUTPUT
-          
-          echo "Generated tags:"
-          echo "  - ${COMMIT_TAG}"
-          echo "  - ${BUILD_TAG}"
-          echo "  - ${TIMESTAMP_TAG}"
-          echo "  - ${VERSION_TAG}"
-          echo "  - latest"
+          TIMESTAMP=$(date -u +\"%Y%m%d-%H%M%S\")
+          COMMIT_TAG=\"commit-${{ env.IMAGE_TAG }}\"
+          BUILD_TAG=\"build-${{ env.BUILD_NUMBER }}\"
+          TIMESTAMP_TAG=\"ts-${TIMESTAMP}\"
+          VERSION_TAG=\"v1.0.${{ env.BUILD_NUMBER }}\"
+          echo \"commit-tag=${COMMIT_TAG}\" >> $GITHUB_OUTPUT
+          echo \"build-tag=${BUILD_TAG}\" >> $GITHUB_OUTPUT
+          echo \"timestamp-tag=${TIMESTAMP_TAG}\" >> $GITHUB_OUTPUT
+          echo \"version-tag=${VERSION_TAG}\" >> $GITHUB_OUTPUT
+          echo \"latest-tag=latest\" >> $GITHUB_OUTPUT
       - name: Tag and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
-          # Tag the local image with multiple unique tags
           docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.commit-tag }}
           docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.build-tag }}
           docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.timestamp-tag }}
           docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.version-tag }}
           docker tag product-management:$IMAGE_TAG $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.latest-tag }}
-          
-          # Push all tags to ECR
-          echo "Pushing images with multiple tags to ECR..."
           docker push $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.commit-tag }}
           docker push $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.build-tag }}
           docker push $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.timestamp-tag }}
           docker push $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.version-tag }}
           docker push $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.latest-tag }}
-          
-          echo "All images pushed successfully to ECR!"
-          echo "Images available with tags:"
-          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.commit-tag }}"
-          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.build-tag }}"
-          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.timestamp-tag }}"
-          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.version-tag }}"
-          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.latest-tag }}"
-      - name: Save Docker image
-        run: |
-          docker save product-management:${{ env.IMAGE_TAG }} | gzip > product-management-image.tar.gz
-      - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image
-          path: product-management-image.tar.gz
-          retention-days: 1
 
   image_scan:
     runs-on: ubuntu-latest
     needs: [image_build]
-    # Add permissions required for OIDC
     permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS credentials
@@ -254,19 +218,13 @@ jobs:
           image-ref: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:v1.0.${{ env.BUILD_NUMBER }}
           format: 'sarif'
           output: 'trivy-results.sarif'
-      - name: Upload Trivy scan results
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-results
-          path: trivy-results.sarif
 
   deploy_dev:
     runs-on: ubuntu-latest
     needs: [image_build, image_scan]
-    # Add permissions required for OIDC
     permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
+      id-token: write
+      contents: read
     environment:
       name: development
       url: http://dev-product-management-api.example.com
@@ -290,9 +248,8 @@ jobs:
           image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:v1.0.${{ env.BUILD_NUMBER }}
       - name: Check ECS service status
         run: |
-          echo "Checking ECS service status..."
-          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} || echo "Service not found or inactive"
-          
+          echo \"Checking ECS service status...\"
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} || echo \"Service not found or inactive\"
       - name: Deploy to Amazon ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
@@ -305,10 +262,9 @@ jobs:
   deploy_prod:
     runs-on: ubuntu-latest
     needs: [deploy_dev]
-    # Add permissions required for OIDC
     permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
+      id-token: write
+      contents: read
     environment:
       name: production
       url: http://product-management-api.example.com
