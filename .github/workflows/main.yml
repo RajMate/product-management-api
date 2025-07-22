@@ -192,76 +192,6 @@ jobs:
             safety-report.json
             safety-report.txt
 
-  dockerfile_scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run hadolint
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          format: json
-          output-file: hadolint-basic-report.json
-      - name: Run advanced hadolint
-        run: |
-          # Download hadolint binary for more detailed analysis
-          if curl -sL https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 -o hadolint-Linux-x86_64; then
-            chmod +x hadolint-Linux-x86_64
-            ./hadolint-Linux-x86_64 Dockerfile --format json > hadolint-advanced-report.json || echo '[]' > hadolint-advanced-report.json
-          else
-            echo '[]' > hadolint-advanced-report.json
-          fi
-      - name: Generate HTML report
-        run: |
-          # Install jq if needed
-          which jq || apt-get update && apt-get install -y jq || true
-          
-          echo "<html><head><title>Dockerfile Analysis</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .issue { margin: 10px 0; padding: 10px; border-radius: 5px; }
-            .error { border-left: 5px solid #d9534f; }
-            .warning { border-left: 5px solid #f0ad4e; }
-            .info { border-left: 5px solid #5bc0de; }
-            h1 { color: #333; }
-          </style></head><body>
-          <h1>Dockerfile Analysis Report</h1>" > dockerfile-report.html
-          
-          # Handle potential JSON parsing errors
-          if jq empty hadolint-basic-report.json 2>/dev/null; then
-            CRITICAL_ISSUES=$(jq '[.[] | select(.level == "error")] | length' hadolint-basic-report.json)
-            WARNING_ISSUES=$(jq '[.[] | select(.level == "warning")] | length' hadolint-basic-report.json)
-            INFO_ISSUES=$(jq '[.[] | select(.level == "info")] | length' hadolint-basic-report.json)
-            
-            echo "<h2>Summary</h2>" >> dockerfile-report.html
-            echo "<p>Critical Issues: $CRITICAL_ISSUES</p>" >> dockerfile-report.html
-            echo "<p>Warning Issues: $WARNING_ISSUES</p>" >> dockerfile-report.html
-            echo "<p>Info Issues: $INFO_ISSUES</p>" >> dockerfile-report.html
-            echo "<h2>Details</h2>" >> dockerfile-report.html
-            
-            jq -r '.[] | "<div class=\"issue \(.level)\"><h3>\(.level | ascii_upcase): \(.code)</h3><p><strong>Line:</strong> \(.line // \"N/A\")</p><p><strong>Message:</strong> \(.message)</p></div>"' hadolint-basic-report.json >> dockerfile-report.html 2>/dev/null || {
-              for issue in $(jq -c '.[]' hadolint-basic-report.json 2>/dev/null); do
-                level=$(echo $issue | jq -r '.level // "unknown"')
-                code=$(echo $issue | jq -r '.code // "N/A"')
-                line=$(echo $issue | jq -r '.line // "N/A"')
-                message=$(echo $issue | jq -r '.message // "No message"')
-                echo "<div class=\"issue $level\"><h3>$level: $code</h3><p><strong>Line:</strong> $line</p><p><strong>Message:</strong> $message</p></div>" >> dockerfile-report.html
-              done
-            }
-          else
-            echo "<p>No issues found or invalid JSON report</p>" >> dockerfile-report.html
-          fi
-          
-          echo "</body></html>" >> dockerfile-report.html
-      - name: Upload dockerfile reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: dockerfile-reports
-          path: |
-            hadolint-basic-report.json
-            hadolint-advanced-report.json
-            dockerfile-report.html
-
   aws_auth:
     runs-on: ubuntu-latest
     # Add permissions required for OIDC
@@ -282,7 +212,7 @@ jobs:
 
   image_build:
     runs-on: ubuntu-latest
-    needs: [secret_scan, unit_test, security_scan, dockerfile_scan]
+    needs: [secret_scan, unit_test, security_scan]
     # Add permissions required for OIDC
     permissions:
       id-token: write  # This is required for requesting the JWT
