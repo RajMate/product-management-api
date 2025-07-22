@@ -19,26 +19,28 @@
         {
           "name": "ENVIRONMENT",
           "value": "production"
-        },
+        }
+      ],
+      "secrets": [
         {
           "name": "DB_USERNAME",
-          "value": "prod_admin"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:username::"
         },
         {
           "name": "DB_PASSWORD",
-          "value": "prod_password123"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:password::"
         },
         {
           "name": "DB_HOST",
-          "value": "prod-db.example.com"
-        },
-        {
-          "name": "DB_NAME",
-          "value": "product_management_prod"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:host::"
         },
         {
           "name": "DB_PORT",
-          "value": "5432"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:port::"
+        },
+        {
+          "name": "DB_NAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:dbname::"
         }
       ],
       "logConfiguration": {
