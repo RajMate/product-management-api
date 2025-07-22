@@ -5,8 +5,8 @@
   "networkMode": "awsvpc",
   "containerDefinitions": [
     {
-      "name": "dev-container",
-      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${IMAGE_TAG}",
+      "name": "product-management-container",
+      "image": "294895595987.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:latest",
       "essential": true,
       "portMappings": [
         {
@@ -19,24 +19,20 @@
         {
           "name": "ENVIRONMENT",
           "value": "development"
-        },
-        {
-          "name": "DEBUG",
-          "value": "true"
         }
       ],
       "secrets": [
         {
           "name": "DB_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:product-management/dev/db-credentials:username::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:username::"
         },
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:product-management/dev/db-credentials:password::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:password::"
         },
         {
           "name": "DB_HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:${AWS_ACCOUNT_ID}:secret:product-management/dev/db-credentials:host::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:host::"
         }
       ],
       "logConfiguration": {
@@ -50,12 +46,12 @@
       "healthCheck": {
         "command": [
           "CMD-SHELL",
-          "curl -f http://localhost:8080/health || exit 0"
+          "curl -f http://localhost:8080/health || exit 1"
         ],
         "interval": 30,
         "timeout": 5,
         "retries": 3,
-        "startPeriod": 60
+        "startPeriod": 30
       },
       "cpu": 256,
       "memory": 512,
