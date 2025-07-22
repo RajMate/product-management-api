@@ -316,8 +316,9 @@ jobs:
           if [ "$SERVICE_STATUS" = "INACTIVE" ] || [ "$SERVICE_STATUS" = "NOT_FOUND" ]; then
             echo "Service is inactive or not found. Creating/updating service..."
             
-            # Get task definition ARN
-            TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition ${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
+            # Register the task definition and get ARN
+            echo "Registering task definition..."
+            TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
             echo "Task definition ARN: $TASK_DEF_ARN"
             
             # Create or update service
@@ -393,8 +394,9 @@ jobs:
           if [ "$SERVICE_STATUS" = "INACTIVE" ] || [ "$SERVICE_STATUS" = "NOT_FOUND" ]; then
             echo "Production service is inactive or not found. Creating/updating service..."
             
-            # Get task definition ARN
-            TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition ${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
+            # Register the task definition and get ARN
+            echo "Registering production task definition..."
+            TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
             echo "Task definition ARN: $TASK_DEF_ARN"
             
             # Create or update service
