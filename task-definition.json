@@ -31,14 +31,16 @@
         {
           "name": "DB_NAME",
           "value": "product_management_dev"
-        },
+        }
+      ],
+      "secrets": [
         {
           "name": "DB_USERNAME",
-          "value": "testuser"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:username::"
         },
         {
           "name": "DB_PASSWORD",
-          "value": "testpass"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:password::"
         }
       ],
       "logConfiguration": {
