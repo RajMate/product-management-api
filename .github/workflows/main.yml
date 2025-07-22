@@ -45,13 +45,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for TruffleHog
       - name: Run Trufflehog
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: main
-          head: HEAD
-          extra_args: --debug --only-verified
+          # Scan filesystem instead of git diff to avoid BASE/HEAD same commit error
+          extra_args: --debug --only-verified --no-git
 
   unit_test:
     runs-on: ubuntu-latest
