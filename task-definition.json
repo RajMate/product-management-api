@@ -19,28 +19,28 @@
         {
           "name": "ENVIRONMENT",
           "value": "development"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "localhost"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "product_management_dev"
         }
       ],
       "secrets": [
         {
           "name": "DB_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:username::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:username::"
         },
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:password::"
-        },
-        {
-          "name": "DB_HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:host::"
-        },
-        {
-          "name": "DB_PORT",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:port::"
-        },
-        {
-          "name": "DB_NAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:rds!db-d8b60af7-7724-4067-bccb-70272890d408:dbname::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:294895595987:secret:product-management/dev/db-credentials:password::"
         }
       ],
       "logConfiguration": {
