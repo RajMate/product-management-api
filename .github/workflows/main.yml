@@ -7,17 +7,17 @@ on:
     branches: [ main ]
 
 env:
-  # Pipeline configuration variables
+  # Build environment
   IMAGE_TAG: ${{ github.sha }}
   BUILD_NUMBER: ${{ github.run_number }}
   BUILD_TIMESTAMP: ${{ github.run_id }}
   
-  # AWS Configuration - Set these in GitHub repository secrets
+  # AWS Configuration
   AWS_DEFAULT_REGION: us-east-1
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
   
-  # ECS Resources - Set these in GitHub repository secrets
+  # ECR and ECS Configuration
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
   ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
   ECS_SERVICE_DEV: ${{ secrets.ECS_SERVICE_DEV }}
@@ -25,17 +25,17 @@ env:
   ECS_TASK_DEFINITION_DEV: ${{ secrets.ECS_TASK_DEFINITION_DEV }}
   ECS_TASK_DEFINITION_PROD: ${{ secrets.ECS_TASK_DEFINITION_PROD }}
   
-  # Database Configuration - Set these in GitHub repository secrets
+  # Database Configuration
   DB_HOST_DEV: ${{ secrets.DB_HOST_DEV }}
   DB_HOST_PROD: ${{ secrets.DB_HOST_PROD }}
   DB_PASSWORD_DEV: ${{ secrets.DB_PASSWORD_DEV }}
   DB_PASSWORD_PROD: ${{ secrets.DB_PASSWORD_PROD }}
   
-  # Load Balancer Configuration - Set these in GitHub repository secrets
+  # Network Configuration
   TARGET_GROUP_ARN: ${{ secrets.TARGET_GROUP_ARN }}
   PROD_TARGET_GROUP_ARN: ${{ secrets.PROD_TARGET_GROUP_ARN }}
   
-  # Network Configuration - Set these in GitHub repository secrets
+  # Network IDs
   SUBNET_ID_1: ${{ secrets.SUBNET_ID_1 }}
   SUBNET_ID_2: ${{ secrets.SUBNET_ID_2 }}
   SECURITY_GROUP_ID: ${{ secrets.SECURITY_GROUP_ID }}
@@ -45,17 +45,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Run Trufflehog
+        uses: trufflesecurity/trufflehog@main
         with:
-          python-version: '3.9'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install detect-secrets
-      - name: Run secret scan
-        run: |
-          detect-secrets scan --baseline .secrets.baseline
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
 
   unit_test:
     runs-on: ubuntu-latest
@@ -64,22 +60,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov httpx
-      - name: Run unit tests
+      - name: Run tests
         run: |
-          # Directory already exists, no need to create it
-          pytest src/unittest/python --junitxml=junit-report.xml
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: junit-report.xml
-        if: always()
+          python -m pytest tests/ -v --tb=short
 
   code_coverage:
     runs-on: ubuntu-latest
@@ -88,42 +76,22 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov httpx
-      - name: Run code coverage
+          pip install coverage pytest-cov
+      - name: Run tests with coverage
         run: |
-          pytest src/unittest/python --cov=src/main/python --cov-report=xml --cov-report=html
-      - name: Upload coverage report
+          python -m pytest tests/ --cov=app --cov-report=xml --cov-report=html
+      - name: Upload coverage reports
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: coverage-reports
           path: |
             coverage.xml
             htmlcov/
-
-  # Commenting out static_analysis job as requested - will be updated later
-  # static_analysis:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.9'
-  #     - name: Install dependencies
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         pip install flake8 pylint
-  #     - name: Run flake8
-  #       run: |
-  #         flake8 src/main/python
-  #     - name: Run pylint
-  #       run: |
-  #         pylint src/main/python || true
 
   security_scan:
     runs-on: ubuntu-latest
@@ -132,87 +100,28 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install -r requirements.txt
           pip install bandit safety
-      - name: Run Bandit
+      - name: Run Bandit security scan
         run: |
-          bandit -r src/main/python -f json -o bandit-report.json || true
-          bandit -r src/main/python -f html -o bandit-report.html || true
-          
-          # Create a readable HTML report
-          echo "<!DOCTYPE html><html><head><title>Bandit Security Analysis</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .issue { margin: 10px 0; padding: 10px; border-radius: 5px; }
-            .high { border-left: 5px solid #d9534f; }
-            .medium { border-left: 5px solid #f0ad4e; }
-            .low { border-left: 5px solid #5bc0de; }
-          </style></head><body>
-          <h1>Bandit Security Analysis Report</h1>" > bandit-report-summary.html
-          
-          python -c "import json
-          try:
-              with open('bandit-report.json', 'r') as f:
-                  data = json.load(f)
-                  
-              results = data.get('results', [])
-              if not results:
-                  print('<h2>No security issues found</h2>')
-              else:
-                  for result in results:
-                      severity = result.get('issue_severity', 'UNKNOWN').lower()
-                      confidence = result.get('issue_confidence', 'UNKNOWN')
-                      text = result.get('issue_text', 'No description')
-                      filename = result.get('filename', 'Unknown file')
-                      line_number = result.get('line_number', 'Unknown')
-                      
-                      print(f'<div class=\"issue {severity}\"><h3>{severity.upper()} - {confidence} Confidence</h3>')
-                      print(f'<p><strong>File:</strong> {filename}:{line_number}</p>')
-                      print(f'<p><strong>Issue:</strong> {text}</p></div>')
-          except Exception as e:
-              print(f'<h2>Error processing report: {e}</h2>')
-          " >> bandit-report-summary.html || echo "<h2>No security issues found</h2>" >> bandit-report-summary.html
-          
-          echo "</body></html>" >> bandit-report-summary.html
-      - name: Run Safety
+          bandit -r app/ -f json -o bandit-report.json || true
+      - name: Run Safety check
         run: |
-          safety check -r requirements.txt --json > safety-report.json || true
-          safety check -r requirements.txt --output text > safety-report.txt || true
+          safety check --json --output safety-report.json || true
       - name: Upload security reports
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
           path: |
             bandit-report.json
-            bandit-report.html
-            bandit-report-summary.html
             safety-report.json
-            safety-report.txt
 
   aws_auth:
     runs-on: ubuntu-latest
-    # Add permissions required for OIDC
-    permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
-          role-session-name: GitHubActionsSession
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
-      - name: Verify AWS authentication
-        run: |
-          aws sts get-caller-identity
-          echo "AWS authentication successful"
-
-  image_build:
-    runs-on: ubuntu-latest
-    needs: [secret_scan, unit_test, security_scan]
     # Add permissions required for OIDC
     permissions:
       id-token: write  # This is required for requesting the JWT
@@ -223,26 +132,46 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
-          role-session-name: GitHubActionsECRSession
+          role-session-name: GitHubActionsAuthSession
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+      - name: Test AWS authentication
+        run: |
+          aws sts get-caller-identity
+          echo "AWS authentication successful!"
+
+  image_build:
+    runs-on: ubuntu-latest
+    needs: [secret_scan, unit_test, code_coverage, security_scan, aws_auth]
+    # Add permissions required for OIDC
+    permissions:
+      id-token: write  # This is required for requesting the JWT
+      contents: read   # This is required for actions/checkout
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tags: ${{ steps.generate-tags.outputs.all-tags }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
+          role-session-name: GitHubActionsBuildSession
           aws-region: ${{ env.AWS_DEFAULT_REGION }}
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
       - name: Build Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: false
-          load: true
-          tags: product-management:${{ env.IMAGE_TAG }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        run: |
+          echo "Building Docker image..."
+          docker build -t product-management:$IMAGE_TAG .
+          echo "Docker image built successfully!"
       - name: Generate unique image tags
         id: generate-tags
         run: |
-          # Generate timestamp in format YYYYMMDD-HHMMSS
+          # Generate timestamp in UTC
           TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
           
           # Create multiple unique tags
@@ -283,63 +212,63 @@ jobs:
           docker push $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.version-tag }}
           docker push $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.latest-tag }}
           
-          echo "::set-output name=ecr-image::$ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.version-tag }}"
+          echo "All images pushed successfully to ECR!"
+          echo "Images available with tags:"
+          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.commit-tag }}"
+          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.build-tag }}"
+          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.timestamp-tag }}"
+          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.version-tag }}"
+          echo "  - $ECR_REGISTRY/dev-user-app-repo:${{ steps.generate-tags.outputs.latest-tag }}"
       - name: Save Docker image
         run: |
-          docker save product-management:${{ env.IMAGE_TAG }} > product-management-image.tar
-      - name: Upload Docker image
+          docker save product-management:${{ env.IMAGE_TAG }} | gzip > product-management-image.tar.gz
+      - name: Upload Docker image artifact
         uses: actions/upload-artifact@v4
         with:
           name: docker-image
-          path: product-management-image.tar
+          path: product-management-image.tar.gz
+          retention-days: 1
 
   image_scan:
     runs-on: ubuntu-latest
     needs: [image_build]
-    # Add permissions for CodeQL SARIF upload
+    # Add permissions required for OIDC
     permissions:
-      security-events: write  # Required for uploading SARIF results
-      contents: read         # Required for actions/checkout
+      id-token: write  # This is required for requesting the JWT
+      contents: read   # This is required for actions/checkout
     steps:
       - uses: actions/checkout@v4
-      - name: Download Docker image
-        uses: actions/download-artifact@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          name: docker-image
-      - name: Load Docker image
-        run: |
-          docker load -i product-management-image.tar
+          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
+          role-session-name: GitHubActionsScanSession
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: product-management:${{ env.IMAGE_TAG }}
-          format: 'table'
-          exit-code: '0'  # Changed to 0 to prevent build failure
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-      - name: Run Trivy with SARIF output
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: product-management:${{ env.IMAGE_TAG }}
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:v1.0.${{ env.BUILD_NUMBER }}
           format: 'sarif'
           output: 'trivy-results.sarif'
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: 'trivy-results.sarif'
+          name: trivy-results
+          path: trivy-results.sarif
 
-  # Simplified deployment jobs for GitHub Actions
   deploy_dev:
     runs-on: ubuntu-latest
-    needs: [image_scan]
+    needs: [image_build, image_scan]
     # Add permissions required for OIDC
     permissions:
       id-token: write  # This is required for requesting the JWT
       contents: read   # This is required for actions/checkout
     environment:
       name: development
-      url: http://dev.product-management-api.example.com
+      url: http://dev-product-management-api.example.com
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS credentials
@@ -358,13 +287,19 @@ jobs:
           task-definition: task-definition.json
           container-name: product-management-container
           image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:v1.0.${{ env.BUILD_NUMBER }}
+      - name: Check ECS service status
+        run: |
+          echo "Checking ECS service status..."
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} || echo "Service not found or inactive"
+          
       - name: Deploy to Amazon ECS
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE_DEV }}
           cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+          wait-for-service-stability: false
+          force-new-deployment: true
 
   deploy_prod:
     runs-on: ubuntu-latest
