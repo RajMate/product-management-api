@@ -284,8 +284,7 @@ def run_app():
     import os
     
     # Use environment variable for host, default to 0.0.0.0 for containers
-    # nosec B104: Binding to 0.0.0.0 is required for containerized applications
-    host = os.getenv("HOST", "0.0.0.0")
+    host = os.getenv("HOST", "0.0.0.0")  # nosec B104
     port = int(os.getenv("PORT", "8080"))
     
     uvicorn.run("src.main.python.app:app", host=host, port=port, log_level="info")
