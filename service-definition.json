@@ -6,7 +6,7 @@
     {
       "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:294895595987:targetgroup/product-management-tg/abcdef1234567890",
       "containerName": "product-management-container",
-      "containerPort": 8000
+      "containerPort": 8080
     }
   ],
   "desiredCount": 2,
@@ -35,7 +35,6 @@
   "healthCheckGracePeriodSeconds": 60,
   "schedulingStrategy": "REPLICA",
   "enableECSManagedTags": true,
-  "propagateTags": "SERVICE",
   "tags": [
     {
       "key": "Environment",

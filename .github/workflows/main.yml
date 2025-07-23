@@ -2,445 +2,297 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
 env:
-  # Pipeline configuration variables
-  IMAGE_TAG: ${{ github.sha }}
-  BUILD_NUMBER: ${{ github.run_number }}
-  BUILD_TIMESTAMP: ${{ github.run_id }}
-  
-  # AWS Configuration - Set these in GitHub repository secrets
   AWS_DEFAULT_REGION: us-east-1
-  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-  
-  # ECS Resources - Set these in GitHub repository secrets
-  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-  ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
-  ECS_SERVICE_DEV: ${{ secrets.ECS_SERVICE_DEV }}
-  ECS_SERVICE_PROD: ${{ secrets.ECS_SERVICE_PROD }}
-  ECS_TASK_DEFINITION_DEV: ${{ secrets.ECS_TASK_DEFINITION_DEV }}
-  ECS_TASK_DEFINITION_PROD: ${{ secrets.ECS_TASK_DEFINITION_PROD }}
-  
-  # Database Configuration - Set these in GitHub repository secrets
-  DB_HOST_DEV: ${{ secrets.DB_HOST_DEV }}
-  DB_HOST_PROD: ${{ secrets.DB_HOST_PROD }}
-  DB_PASSWORD_DEV: ${{ secrets.DB_PASSWORD_DEV }}
-  DB_PASSWORD_PROD: ${{ secrets.DB_PASSWORD_PROD }}
-  
-  # Load Balancer Configuration - Set these in GitHub repository secrets
-  TARGET_GROUP_ARN: ${{ secrets.TARGET_GROUP_ARN }}
-  PROD_TARGET_GROUP_ARN: ${{ secrets.PROD_TARGET_GROUP_ARN }}
-  
-  # Network Configuration - Set these in GitHub repository secrets
-  SUBNET_ID_1: ${{ secrets.SUBNET_ID_1 }}
-  SUBNET_ID_2: ${{ secrets.SUBNET_ID_2 }}
-  SECURITY_GROUP_ID: ${{ secrets.SECURITY_GROUP_ID }}
+  ECR_REPOSITORY: dev-user-app-repo
+  ECS_CLUSTER: product-management-cluster
+  ECS_SERVICE_DEV: product-management-service-dev
+  ECS_SERVICE_PROD: product-management-service-prod
+  ECS_TASK_DEFINITION_DEV: product-management-task
+  ECS_TASK_DEFINITION_PROD: product-management-task-prod
+  TARGET_GROUP_ARN: arn:aws:elasticloadbalancing:us-east-1:294895595987:targetgroup/product-management-tg-dev/1234567890abcdef
+  PROD_TARGET_GROUP_ARN: arn:aws:elasticloadbalancing:us-east-1:294895595987:targetgroup/product-management-tg-prod/abcdef1234567890
+  SUBNET_ID_1: subnet-12345678
+  SUBNET_ID_2: subnet-87654321
+  SECURITY_GROUP_ID: sg-abcdef123456
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   secret_scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Fetch full history for TruffleHog
-      - name: Run TruffleHog filesystem scan
-        run: |
-          # Install TruffleHog
-          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
-          
-          # Run filesystem scan with correct flags
-          trufflehog filesystem --debug --only-verified ./
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-  unit_test:
+    - name: Run TruffleHog OSS
+      run: |
+        # Install TruffleHog
+        curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+        
+        # Run TruffleHog with verified secrets only
+        trufflehog git file://. --only-verified --fail
+
+  code_quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov httpx
-      - name: Run unit tests
-        run: |
-          # Directory already exists, no need to create it
-          pytest src/unittest/python --junitxml=junit-report.xml
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: junit-report.xml
-        if: always()
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-  code_coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov httpx
-      - name: Run code coverage
-        run: |
-          pytest src/unittest/python --cov=src/main/python --cov-report=xml --cov-report=html
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: |
-            coverage.xml
-            htmlcov/
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-  # Commenting out static_analysis job as requested - will be updated later
-  # static_analysis:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.9'
-  #     - name: Install dependencies
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         pip install flake8 pylint
-  #     - name: Run flake8
-  #       run: |
-  #         flake8 src/main/python
-  #     - name: Run pylint
-  #       run: |
-  #         pylint src/main/python || true
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-  security_scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install bandit safety
-      - name: Run Bandit
-        run: |
-          bandit -r src/main/python -f json -o bandit-report.json || true
-          bandit -r src/main/python -f html -o bandit-report.html || true
-          
-          # Create a readable HTML report
-          echo "<html><head><title>Bandit Security Analysis</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .issue { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
-            .high { border-left: 5px solid #d9534f; }
-            .medium { border-left: 5px solid #f0ad4e; }
-            .low { border-left: 5px solid #5bc0de; }
-          </style></head><body>
-          <h1>Bandit Security Analysis Report</h1>" > bandit-report-summary.html
-          
-          python -c "import json
-          try:
-              with open('bandit-report.json', 'r') as f:
-                  data = json.load(f)
-                  
-              results = data.get('results', [])
-              if not results:
-                  print('<h2>No security issues found</h2>')
-              else:
-                  print(f'<h2>Found {len(results)} potential security issues</h2>')
-                  
-              for issue in results:
-                  severity = issue.get('issue_severity', 'low').lower()
-                  print(f'<div class=\"issue {severity}\">')
-                  print(f'<h3>{issue.get(\"test_name\")}: {issue.get(\"issue_text\")}</h3>')
-                  print(f'<p><strong>Severity:</strong> {severity.capitalize()}</p>')
-                  print(f'<p><strong>Confidence:</strong> {issue.get(\"issue_confidence\", \"\").capitalize()}</p>')
-                  print(f'<p><strong>File:</strong> {issue.get(\"filename\")}:{issue.get(\"line_number\")}</p>')
-                  print(f'<p><strong>Code:</strong> <pre>{issue.get(\"code\", \"\")}</pre></p>')
-                  print(f'<p><strong>More Info:</strong> {issue[\\\"more_info\\\"]}</p></div>')
-          except Exception as e:
-              print(f'<h2>Error processing report: {e}</h2>')
-          " >> bandit-report-summary.html || echo "<h2>No security issues found</h2>" >> bandit-report-summary.html
-          
-          echo "</body></html>" >> bandit-report-summary.html
-      - name: Run Safety
-        run: |
-          safety check -r requirements.txt --json > safety-report.json || true
-          safety check -r requirements.txt --output text > safety-report.txt || true
-      - name: Upload security reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-reports
-          path: |
-            bandit-report.json
-            bandit-report.html
-            bandit-report-summary.html
-            safety-report.json
-            safety-report.txt
+    - name: Run Bandit security linter
+      run: |
+        bandit -r src/ -f json -o bandit-report.json || true
+        bandit -r src/
 
-  aws_auth:
-    runs-on: ubuntu-latest
-    # Add permissions required for OIDC
-    permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
-          role-session-name: GitHubActionsSession
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
-      - name: Verify AWS authentication
-        run: |
-          aws sts get-caller-identity
-          echo "AWS authentication successful"
+    - name: Run Safety check
+      run: |
+        safety check --json --output safety-report.json || true
+        safety check
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
 
   image_build_and_scan:
     runs-on: ubuntu-latest
-    needs: [secret_scan, unit_test, security_scan]
-    # Add permissions required for OIDC and security events
+    needs: [secret_scan, code_quality]
     permissions:
-      id-token: write        # Required for requesting the JWT
-      contents: read         # Required for actions/checkout
-      security-events: write # Required for uploading SARIF results
+      id-token: write
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
-          role-session-name: GitHubActionsECRSession
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Build Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: false
-          load: true
-          tags: product-management:${{ env.IMAGE_TAG }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Run Trivy vulnerability scanner (local image)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: product-management:${{ env.IMAGE_TAG }}
-          format: 'table'
-          exit-code: '0'  # Don't fail build on vulnerabilities
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-      - name: Run Trivy with SARIF output (local image)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: product-management:${{ env.IMAGE_TAG }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
-      - name: Tag and push image to Amazon ECR (after scan)
-        run: |
-          # Tag and push single image with commit SHA only after successful scan
-          docker tag product-management:${{ env.IMAGE_TAG }} 294895595987.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${{ env.IMAGE_TAG }}
-          
-          # Push single tag to ECR
-          echo "Pushing scanned image with commit SHA tag to ECR..."
-          docker push 294895595987.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${{ env.IMAGE_TAG }}
-          
-          echo "Scanned image pushed successfully to ECR!"
-          echo "Image available at: 294895595987.dkr.ecr.us-east-1.amazonaws.com/dev-user-app-repo:${{ env.IMAGE_TAG }}"
-      - name: Save Docker image
-        run: |
-          docker save product-management:${{ env.IMAGE_TAG }} > product-management-image.tar
-      - name: Upload Docker image
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image
-          path: product-management-image.tar
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-  # Simplified deployment jobs for GitHub Actions
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: false
+        load: true
+        tags: product-management:${{ env.IMAGE_TAG }}
+
+    - name: Run Trivy vulnerability scanner (local image)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: product-management:${{ env.IMAGE_TAG }}
+        format: 'table'
+        exit-code: '0'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Run Trivy vulnerability scanner (SARIF)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: product-management:${{ env.IMAGE_TAG }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        exit-code: '0'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Tag and push image to Amazon ECR (after scan)
+      run: |
+        docker tag product-management:${{ env.IMAGE_TAG }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_DEFAULT_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_DEFAULT_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
   deploy_dev:
     runs-on: ubuntu-latest
     needs: [image_build_and_scan]
-    # Add permissions required for OIDC
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
-    environment:
-      name: development
-      url: http://dev.product-management-api.example.com
+      id-token: write
+      contents: read
+    environment: development
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
-          role-session-name: GitHubActionsDeploySession
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - name: Fill in the new image ID in the task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: product-management-container
-          image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:${{ env.IMAGE_TAG }}
-      - name: Force delete and recreate ECS service (to clear SSM cache)
-        run: |
-          echo "Checking ECS service status..."
-          SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
-          echo "Service status: $SERVICE_STATUS"
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition.json
+        container-name: product-management-container
+        image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_DEFAULT_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+    - name: Force delete and recreate ECS service (to clear SSM cache)
+      run: |
+        # Check if service exists and delete it
+        SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
+        
+        if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
+          echo "Deleting existing ECS service to clear cached configurations..."
+          # Set desired count to 0 first
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_DEV }} --desired-count 0
           
-          # Force delete existing service if it exists
-          if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
-            echo "Deleting existing service to clear any cached configurations..."
-            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_DEV }} --desired-count 0
-            aws ecs delete-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_DEV }}
-            echo "Waiting for service deletion..."
-            sleep 30
-          fi
+          # Wait for tasks to stop
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }}
           
-          # Register the task definition and get ARN
-          echo "Registering new task definition..."
-          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
-          echo "Task definition ARN: $TASK_DEF_ARN"
-            
-            # Create or update service
-            aws ecs create-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --service-name ${{ env.ECS_SERVICE_DEV }} \
-              --task-definition "$TASK_DEF_ARN" \
-              --desired-count 1 \
-              --launch-type FARGATE \
-              --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID_1 }},${{ env.SUBNET_ID_2 }}],securityGroups=[${{ env.SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
-              --load-balancers "targetGroupArn=${{ env.TARGET_GROUP_ARN }},containerName=product-management-container,containerPort=8000" \
-              --enable-execute-command || \
-            aws ecs update-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --service ${{ env.ECS_SERVICE_DEV }} \
-              --task-definition "$TASK_DEF_ARN" \
-              --desired-count 1 \
-              --force-new-deployment
-              
-            echo "Service created/updated successfully"
-          else
-            echo "Service is active, proceeding with deployment"
-          fi
+          # Delete the service
+          aws ecs delete-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_DEV }}
           
-      - name: Deploy to Amazon ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE_DEV }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: false
-          force-new-deployment: true
-        continue-on-error: true
-      - name: Verify deployment
-        run: |
-          echo "Verifying deployment status..."
-          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query 'services[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount}' --output table
+          # Wait a bit for cleanup
+          sleep 30
+        fi
+        
+        # Register new task definition
+        TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition ${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
+        
+        # Create or update service
+        aws ecs create-service \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service-name ${{ env.ECS_SERVICE_DEV }} \
+          --task-definition "$TASK_DEF_ARN" \
+          --desired-count 1 \
+          --launch-type FARGATE \
+          --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID_1 }},${{ env.SUBNET_ID_2 }}],securityGroups=[${{ env.SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
+          --load-balancers "targetGroupArn=${{ env.TARGET_GROUP_ARN }},containerName=product-management-container,containerPort=8080" \
+          --enable-execute-command || \
+        aws ecs update-service \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service ${{ env.ECS_SERVICE_DEV }} \
+          --task-definition "$TASK_DEF_ARN" \
+          --desired-count 1 \
+          --force-new-deployment
+
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE_DEV }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        wait-for-service-stability: true
+
+    - name: Verify deployment
+      run: |
+        echo "Verifying ECS service deployment..."
+        aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}'
 
   deploy_prod:
     runs-on: ubuntu-latest
     needs: [deploy_dev]
-    # Add permissions required for OIDC
+    if: github.ref == 'refs/heads/main'
     permissions:
-      id-token: write  # This is required for requesting the JWT
-      contents: read   # This is required for actions/checkout
-    environment:
-      name: production
-      url: http://product-management-api.example.com
+      id-token: write
+      contents: read
+    environment: production
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
-          role-session-name: GitHubActionsDeployProdSession
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - name: Fill in the new image ID in the task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition-prod.json
-          container-name: product-management-container
-          image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:${{ env.IMAGE_TAG }}
-      - name: Force delete and recreate ECS service (Production - to clear SSM cache)
-        run: |
-          echo "Checking production ECS service status..."
-          SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
-          echo "Service status: $SERVICE_STATUS"
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_DEFAULT_REGION }}
+
+    - name: Fill in the new image ID in the Amazon ECS task definition (Production)
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: task-definition-prod.json
+        container-name: product-management-container
+        image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_DEFAULT_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+    - name: Force delete and recreate ECS service (Production - to clear SSM cache)
+      run: |
+        # Check if service exists and delete it
+        SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
+        
+        if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
+          echo "Deleting existing ECS service to clear cached configurations..."
+          # Set desired count to 0 first
+          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_PROD }} --desired-count 0
           
-          # Force delete existing service if it exists
-          if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
-            echo "Deleting existing production service to clear any cached configurations..."
-            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_PROD }} --desired-count 0
-            aws ecs delete-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_PROD }}
-            echo "Waiting for production service deletion..."
-            sleep 30
-          fi
+          # Wait for tasks to stop
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }}
           
-          # Register the task definition and get ARN
-          echo "Registering production task definition..."
-          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
-          echo "Task definition ARN: $TASK_DEF_ARN"
-            
-            # Create or update service
-            aws ecs create-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --service-name ${{ env.ECS_SERVICE_PROD }} \
-              --task-definition "$TASK_DEF_ARN" \
-              --desired-count 1 \
-              --launch-type FARGATE \
-              --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID_1 }},${{ env.SUBNET_ID_2 }}],securityGroups=[${{ env.SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
-              --load-balancers "targetGroupArn=${{ env.PROD_TARGET_GROUP_ARN }},containerName=product-management-container,containerPort=8000" \
-              --enable-execute-command || \
-            aws ecs update-service \
-              --cluster ${{ env.ECS_CLUSTER }} \
-              --service ${{ env.ECS_SERVICE_PROD }} \
-              --task-definition "$TASK_DEF_ARN" \
-              --desired-count 1 \
-              --force-new-deployment
-              
-            echo "Production service created/updated successfully"
-          else
-            echo "Production service is active, proceeding with deployment"
-          fi
-      - name: Deploy to Amazon ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE_PROD }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
-        continue-on-error: true
-      - name: Verify production deployment
-        run: |
-          echo "Verifying production deployment status..."
-          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount}' --output table
+          # Delete the service
+          aws ecs delete-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_PROD }}
+          
+          # Wait a bit for cleanup
+          sleep 30
+        fi
+        
+        # Register new task definition
+        TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition ${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
+        
+        # Create or update service
+        aws ecs create-service \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service-name ${{ env.ECS_SERVICE_PROD }} \
+          --task-definition "$TASK_DEF_ARN" \
+          --desired-count 1 \
+          --launch-type FARGATE \
+          --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID_1 }},${{ env.SUBNET_ID_2 }}],securityGroups=[${{ env.SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
+          --load-balancers "targetGroupArn=${{ env.PROD_TARGET_GROUP_ARN }},containerName=product-management-container,containerPort=8080" \
+          --enable-execute-command || \
+        aws ecs update-service \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service ${{ env.ECS_SERVICE_PROD }} \
+          --task-definition "$TASK_DEF_ARN" \
+          --desired-count 1 \
+          --force-new-deployment
+          
+
+    - name: Deploy Amazon ECS task definition (Production)
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE_PROD }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        wait-for-service-stability: true
+
+    - name: Verify production deployment
+      run: |
+        echo "Verifying ECS service deployment..."
+        aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}'
