@@ -1,7 +1,6 @@
 import logging
-import os
-from decimal import Decimal
 from typing import List, Optional
+from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from pydantic import BaseModel, validator
@@ -13,66 +12,52 @@ from sqlalchemy.orm import sessionmaker, Session
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# API Configuration
+# Database configuration
+import os
+
+# Database URL from environment variables
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "product_management")
+DB_USERNAME = os.getenv("DB_USERNAME", "user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
+
+DATABASE_URL = f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# FastAPI app configuration
 API_CONFIG = {
     "title": "Product Management API",
-    "description": "A FastAPI application for managing products with CRUD operations",
+    "description": "A RESTful API for managing products with CRUD operations",
     "version": "1.0.0"
 }
 
-# Create FastAPI app
 app = FastAPI(**API_CONFIG)
 
-# Database configuration
-if os.getenv('TEST_MODE') == 'true':
-    # Use in-memory SQLite for testing
-    DATABASE_URL = "sqlite:///:memory:"
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    # Production database configuration
-    DB_HOST = os.getenv('DB_HOST', 'localhost')
-    DB_PORT = os.getenv('DB_PORT', '5432')
-    DB_NAME = os.getenv('DB_NAME', 'product_management')
-    DB_USERNAME = os.getenv('DB_USERNAME', 'postgres')
-    DB_PASSWORD = os.getenv('DB_PASSWORD', 'password')
-    
-    DATABASE_URL = f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    engine = create_engine(DATABASE_URL)
-
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create declarative base
-Base = declarative_base()
-
-# Product model
+# Database model
 class Product(Base):
     __tablename__ = "products"
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(120), unique=True, index=True, nullable=False)
-    description = Column(String(255), default="")
+    name = Column(String, unique=True, index=True, nullable=False)
+    description = Column(String, nullable=True)
     price = Column(Numeric(10, 2), nullable=False)
 
-# Pydantic models for API
-class ProductCreate(BaseModel):
+# Pydantic models for request/response
+class ProductBase(BaseModel):
     name: str
-    description: str = ""
+    description: Optional[str] = None
     price: Decimal
-    
+
+class ProductCreate(ProductBase):
     @validator('name')
     def validate_name(cls, v):
-        if not v or len(v.strip()) == 0:
+        if not v or not v.strip():
             raise ValueError('Product name cannot be empty')
-        if len(v) > 120:
-            raise ValueError('Product name cannot exceed 120 characters')
         return v.strip()
-    
-    @validator('description')
-    def validate_description(cls, v):
-        if v and len(v) > 255:
-            raise ValueError('Description cannot exceed 255 characters')
-        return v
     
     @validator('price')
     def validate_price(cls, v):
@@ -84,12 +69,6 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     price: Optional[Decimal] = None
     
-    @validator('description')
-    def validate_description(cls, v):
-        if v is not None and len(v) > 255:
-            raise ValueError('Description cannot exceed 255 characters')
-        return v
-
     @validator('price')
     def validate_price(cls, v):
         if v is not None and v < 0:
@@ -270,6 +249,15 @@ def update_product_by_name(product_name: str, update: ProductUpdate, db: Session
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
     """Health check endpoint for container health monitoring"""
+    return {
+        "status": "healthy",
+        "version": API_CONFIG["version"],
+        "timestamp": "2025-01-23T18:48:44Z"
+    }
+
+@app.get("/health/detailed", status_code=status.HTTP_200_OK)
+def detailed_health_check():
+    """Detailed health check endpoint that includes database connectivity"""
     try:
         # Test database connection
         db = SessionLocal()
@@ -279,10 +267,11 @@ def health_check():
         return {
             "status": "healthy",
             "database": "connected",
-            "version": API_CONFIG["version"]
+            "version": API_CONFIG["version"],
+            "timestamp": "2025-01-23T18:48:44Z"
         }
     except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
+        logger.error(f"Detailed health check failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Service unhealthy: {str(e)}"
@@ -294,8 +283,8 @@ def run_app():
     import uvicorn
     import os
     
-    # Use environment variable for host, default to localhost for security
-    host = os.getenv("HOST", "127.0.0.1")
+    # Use environment variable for host, default to 0.0.0.0 for containers
+    host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8080"))
     
     uvicorn.run("src.main.python.app:app", host=host, port=port, log_level="info")
