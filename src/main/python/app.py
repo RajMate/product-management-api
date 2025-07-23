@@ -284,6 +284,7 @@ def run_app():
     import os
     
     # Use environment variable for host, default to 0.0.0.0 for containers
+    # nosec B104: Binding to 0.0.0.0 is required for containerized applications
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8080"))
     
