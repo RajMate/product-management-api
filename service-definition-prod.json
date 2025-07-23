@@ -1,15 +1,15 @@
 {
-  "cluster": "dev-user-app-cluster",
-  "serviceName": "user-app-service",
-  "taskDefinition": "dev-user-app-task",
+  "cluster": "prod-user-app-cluster",
+  "serviceName": "prod-user-app-service",
+  "taskDefinition": "prod-user-app-task",
   "loadBalancers": [
     {
-      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:294895595987:targetgroup/product-management-tg/abcdef1234567890",
+      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:294895595987:targetgroup/prod-user-app-tg/abcdef1234567890",
       "containerName": "user-app-container",
-      "containerPort": 8080
+      "containerPort": 80
     }
   ],
-  "desiredCount": 1,
+  "desiredCount": 4,
   "launchType": "FARGATE",
   "platformVersion": "LATEST",
   "deploymentConfiguration": {
@@ -39,7 +39,7 @@
   "tags": [
     {
       "key": "Environment",
-      "value": "development"
+      "value": "production"
     },
     {
       "key": "Project",
