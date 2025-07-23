@@ -1,17 +1,17 @@
 {
-  "family": "product-management-task-prod",
+  "family": "product-management-task",
   "executionRoleArn": "arn:aws:iam::294895595987:role/ecsTaskExecutionRole",
   "taskRoleArn": "arn:aws:iam::294895595987:role/ecsTaskRole",
   "networkMode": "awsvpc",
   "containerDefinitions": [
     {
-      "name": "product-management-container",
+      "name": "user-app-container",
       "image": "<IMAGE>",
       "essential": true,
       "portMappings": [
         {
-          "containerPort": 8080,
-          "hostPort": 8080,
+          "containerPort": 80,
+          "hostPort": 80,
           "protocol": "tcp"
         }
       ],
@@ -46,7 +46,7 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/product-management-prod",
+          "awslogs-group": "/ecs/product-management-task",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "ecs"
         }
@@ -54,31 +54,16 @@
       "healthCheck": {
         "command": [
           "CMD-SHELL",
-          "curl -f http://localhost:8080/health || exit 1"
+          "curl -f http://localhost:80/health || exit 1"
         ],
         "interval": 30,
         "timeout": 5,
         "retries": 3,
-        "startPeriod": 30
-      },
-      "cpu": 512,
-      "memory": 1024,
-      "memoryReservation": 512
+        "startPeriod": 60
+      }
     }
   ],
-  "requiresCompatibilities": [
-    "FARGATE"
-  ],
-  "cpu": "1024",
-  "memory": "2048",
-  "tags": [
-    {
-      "key": "Environment",
-      "value": "Production"
-    },
-    {
-      "key": "Application",
-      "value": "ProductManagement"
-    }
-  ]
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024"
 }

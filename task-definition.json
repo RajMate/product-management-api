@@ -5,7 +5,7 @@
   "networkMode": "awsvpc",
   "containerDefinitions": [
     {
-      "name": "product-management-container",
+      "name": "user-app-container",
       "image": "<IMAGE>",
       "essential": true,
       "portMappings": [
@@ -22,7 +22,7 @@
         },
         {
           "name": "DB_HOST",
-          "value": "localhost"
+          "value": "dev-db.example.com"
         },
         {
           "name": "DB_PORT",
@@ -46,7 +46,7 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/product-management",
+          "awslogs-group": "/ecs/product-management-task",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "ecs"
         }
@@ -59,26 +59,11 @@
         "interval": 30,
         "timeout": 5,
         "retries": 3,
-        "startPeriod": 30
-      },
-      "cpu": 256,
-      "memory": 512,
-      "memoryReservation": 256
+        "startPeriod": 60
+      }
     }
   ],
-  "requiresCompatibilities": [
-    "FARGATE"
-  ],
-  "cpu": "512",
-  "memory": "1024",
-  "tags": [
-    {
-      "key": "Environment",
-      "value": "Development"
-    },
-    {
-      "key": "Application",
-      "value": "ProductManagement"
-    }
-  ]
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512"
 }

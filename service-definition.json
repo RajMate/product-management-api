@@ -1,7 +1,7 @@
 {
-  "cluster": "dev-user-app-cluster",
-  "serviceName": "user-app-service",
-  "taskDefinition": "dev-user-app-task",
+  "cluster": "product-management-cluster",
+  "serviceName": "product-management-service",
+  "taskDefinition": "product-management-task",
   "loadBalancers": [
     {
       "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:294895595987:targetgroup/product-management-tg/abcdef1234567890",
