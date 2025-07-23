@@ -147,75 +147,36 @@ jobs:
       contents: read
     environment: development
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
+          role-session-name: GitHubActionsDeployDevSession
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Fill in the new image ID in the task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: product-management-container
+          image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:${{ env.IMAGE_TAG }}
+      - name: Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_DEV }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-        aws-region: ${{ env.AWS_DEFAULT_REGION }}
-
-    - name: Fill in the new image ID in the Amazon ECS task definition
-      id: task-def
-      uses: aws-actions/amazon-ecs-render-task-definition@v1
-      with:
-        task-definition: task-definition.json
-        container-name: product-management-container
-        image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_DEFAULT_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-
-    - name: Force delete and recreate ECS service (to clear SSM cache)
-      run: |
-        # Check if service exists and delete it
-        SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
-        
-        if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
-          echo "Deleting existing ECS service to clear cached configurations..."
-          # Set desired count to 0 first
-          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_DEV }} --desired-count 0
-          
-          # Wait for tasks to stop
-          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }}
-          
-          # Delete the service
-          aws ecs delete-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_DEV }}
-          
-          # Wait a bit for cleanup
-          sleep 30
-        fi
-        
-        # Register new task definition
-        TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition ${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
-        
-        # Create or update service
-        aws ecs create-service \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --service-name ${{ env.ECS_SERVICE_DEV }} \
-          --task-definition "$TASK_DEF_ARN" \
-          --desired-count 1 \
-          --launch-type FARGATE \
-          --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID_1 }},${{ env.SUBNET_ID_2 }}],securityGroups=[${{ env.SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
-          --load-balancers "targetGroupArn=${{ env.TARGET_GROUP_ARN }},containerName=product-management-container,containerPort=8080" \
-          --enable-execute-command || \
-        aws ecs update-service \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --service ${{ env.ECS_SERVICE_DEV }} \
-          --task-definition "$TASK_DEF_ARN" \
-          --desired-count 1 \
-          --force-new-deployment
-
-    - name: Deploy Amazon ECS task definition
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-      with:
-        task-definition: ${{ steps.task-def.outputs.task-definition }}
-        service: ${{ env.ECS_SERVICE_DEV }}
-        cluster: ${{ env.ECS_CLUSTER }}
-        wait-for-service-stability: true
-
-    - name: Verify deployment
-      run: |
-        echo "Verifying ECS service deployment..."
-        aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}'
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment status..."
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_DEV }} --query 'services[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount}' --output table
 
   deploy_prod:
     runs-on: ubuntu-latest
@@ -226,73 +187,32 @@ jobs:
       contents: read
     environment: production
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-        aws-region: ${{ env.AWS_DEFAULT_REGION }}
-
-    - name: Fill in the new image ID in the Amazon ECS task definition (Production)
-      id: task-def
-      uses: aws-actions/amazon-ecs-render-task-definition@v1
-      with:
-        task-definition: task-definition-prod.json
-        container-name: product-management-container
-        image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_DEFAULT_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-
-    - name: Force delete and recreate ECS service (Production - to clear SSM cache)
-      run: |
-        # Check if service exists and delete it
-        SERVICE_STATUS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
-        
-        if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
-          echo "Deleting existing ECS service to clear cached configurations..."
-          # Set desired count to 0 first
-          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_PROD }} --desired-count 0
-          
-          # Wait for tasks to stop
-          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }}
-          
-          # Delete the service
-          aws ecs delete-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE_PROD }}
-          
-          # Wait a bit for cleanup
-          sleep 30
-        fi
-        
-        # Register new task definition
-        TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition ${{ steps.task-def.outputs.task-definition }} --query 'taskDefinition.taskDefinitionArn' --output text)
-        
-        # Create or update service
-        aws ecs create-service \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --service-name ${{ env.ECS_SERVICE_PROD }} \
-          --task-definition "$TASK_DEF_ARN" \
-          --desired-count 1 \
-          --launch-type FARGATE \
-          --network-configuration "awsvpcConfiguration={subnets=[${{ env.SUBNET_ID_1 }},${{ env.SUBNET_ID_2 }}],securityGroups=[${{ env.SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
-          --load-balancers "targetGroupArn=${{ env.PROD_TARGET_GROUP_ARN }},containerName=product-management-container,containerPort=8080" \
-          --enable-execute-command || \
-        aws ecs update-service \
-          --cluster ${{ env.ECS_CLUSTER }} \
-          --service ${{ env.ECS_SERVICE_PROD }} \
-          --task-definition "$TASK_DEF_ARN" \
-          --desired-count 1 \
-          --force-new-deployment
-          
-
-    - name: Deploy Amazon ECS task definition (Production)
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-      with:
-        task-definition: ${{ steps.task-def.outputs.task-definition }}
-        service: ${{ env.ECS_SERVICE_PROD }}
-        cluster: ${{ env.ECS_CLUSTER }}
-        wait-for-service-stability: true
-
-    - name: Verify production deployment
-      run: |
-        echo "Verifying ECS service deployment..."
-        aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount}'
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::294895595987:role/github-role-niki
+          role-session-name: GitHubActionsDeployProdSession
+          aws-region: ${{ env.AWS_DEFAULT_REGION }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Fill in the new image ID in the task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition-prod.json
+          container-name: product-management-container
+          image: ${{ steps.login-ecr.outputs.registry }}/dev-user-app-repo:${{ env.IMAGE_TAG }}
+      - name: Deploy to Amazon ECS (Production)
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_PROD }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+      - name: Verify production deployment
+        run: |
+          echo "Verifying production deployment status..."
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].{Status:status,RunningCount:runningCount,DesiredCount:desiredCount}' --output table
