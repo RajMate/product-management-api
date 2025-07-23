@@ -1,90 +1,93 @@
-import os
 import logging
-from fastapi import FastAPI, HTTPException, Depends, status
-from pydantic import BaseModel, validator, constr
-from typing import List, Optional
+import os
 from decimal import Decimal
-from sqlalchemy import create_engine, Column, Integer, String, Float, text
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, Depends, status
+from pydantic import BaseModel, validator
+from sqlalchemy import create_engine, Column, Integer, String, Numeric, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# Import configuration
-try:
-    # Try absolute import first (for when running as a package)
-    from config import get_db_config, API_CONFIG, TEST_MODE, LOG_LEVEL, LOG_FORMAT
-except ImportError:
-    # Fall back to relative import (for when running as a module)
-    from src.main.python.config import get_db_config, API_CONFIG, TEST_MODE, LOG_LEVEL, LOG_FORMAT
-
 # Configure logging
-logging.basicConfig(level=getattr(logging, LOG_LEVEL), format=LOG_FORMAT)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get database configuration
-db_config = get_db_config()
-logger.info(f"Using database configuration: {db_config['url']}")
+# API Configuration
+API_CONFIG = {
+    "title": "Product Management API",
+    "description": "A FastAPI application for managing products with CRUD operations",
+    "version": "1.0.0"
+}
 
-# Create engine with connection pooling
-engine = create_engine(
-    db_config.pop('url'),  # Extract URL and use remaining items as kwargs
-    **db_config
-)
+# Create FastAPI app
+app = FastAPI(**API_CONFIG)
+
+# Database configuration
+if os.getenv('TEST_MODE') == 'true':
+    # Use in-memory SQLite for testing
+    DATABASE_URL = "sqlite:///:memory:"
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    # Production database configuration
+    DB_HOST = os.getenv('DB_HOST', 'localhost')
+    DB_PORT = os.getenv('DB_PORT', '5432')
+    DB_NAME = os.getenv('DB_NAME', 'product_management')
+    DB_USERNAME = os.getenv('DB_USERNAME', 'postgres')
+    DB_PASSWORD = os.getenv('DB_PASSWORD', 'password')
+    
+    DATABASE_URL = f"postgresql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    engine = create_engine(DATABASE_URL)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create base class for declarative models
+# Create declarative base
 Base = declarative_base()
 
-# Initialize FastAPI with configuration
-app = FastAPI(
-    title=API_CONFIG["title"],
-    description=API_CONFIG["description"],
-    version=API_CONFIG["version"],
-    docs_url=API_CONFIG["docs_url"],
-    redoc_url=API_CONFIG["redoc_url"],
-    openapi_url=API_CONFIG["openapi_url"],
-    debug=API_CONFIG["debug"]
-)
-
+# Product model
 class Product(Base):
-    __tablename__ = 'product'
+    __tablename__ = "products"
+    
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(120), unique=True, nullable=False)
-    description = Column(String(255))
-    price = Column(Float, nullable=False)
+    name = Column(String(120), unique=True, index=True, nullable=False)
+    description = Column(String(255), default="")
+    price = Column(Numeric(10, 2), nullable=False)
 
+# Pydantic models for API
 class ProductCreate(BaseModel):
-    name: constr(min_length=1, max_length=120)
-    description: constr(max_length=255) = ""
+    name: str
+    description: str = ""
     price: Decimal
-
+    
     @validator('name')
     def validate_name(cls, v):
+        if not v or len(v.strip()) == 0:
+            raise ValueError('Product name cannot be empty')
         if len(v) > 120:
-            raise ValueError('Name must be 120 characters or less')
-        return v
-
+            raise ValueError('Product name cannot exceed 120 characters')
+        return v.strip()
+    
     @validator('description')
     def validate_description(cls, v):
-        if len(v) > 255:
-            raise ValueError('Description must be 255 characters or less')
+        if v and len(v) > 255:
+            raise ValueError('Description cannot exceed 255 characters')
         return v
-
+    
     @validator('price')
     def validate_price(cls, v):
-        if v < 0:
+        if v is not None and v < 0:
             raise ValueError('Price must be non-negative')
         return v
 
 class ProductUpdate(BaseModel):
     description: Optional[str] = None
     price: Optional[Decimal] = None
-
+    
     @validator('description')
     def validate_description(cls, v):
         if v is not None and len(v) > 255:
-            raise ValueError('Description must be 255 characters or less')
+            raise ValueError('Description cannot exceed 255 characters')
         return v
 
     @validator('price')
@@ -289,7 +292,13 @@ def health_check():
 def run_app():
     """Entry point for the console script to run the application"""
     import uvicorn
-    uvicorn.run("src.main.python.app:app", host="0.0.0.0", port=80, log_level="info")
+    import os
+    
+    # Use environment variable for host, default to localhost for security
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8080"))
+    
+    uvicorn.run("src.main.python.app:app", host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":
