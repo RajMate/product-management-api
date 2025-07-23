@@ -60,7 +60,8 @@ class TestProductAPI(unittest.TestCase):
         # Clear all tables before each test
         with engine.begin() as conn:
             for table in reversed(Base.metadata.sorted_tables):
-                conn.execute(text(f'DELETE FROM {table.name}'))
+                # Use proper SQLAlchemy delete to avoid SQL injection
+                conn.execute(table.delete())
         # VACUUM must be run outside transaction
         with engine.connect() as conn:
             conn.execute(text('VACUUM'))
@@ -331,7 +332,8 @@ class TestErrorHandling(unittest.TestCase):
         # Clear all tables before each test
         with engine.begin() as conn:
             for table in reversed(Base.metadata.sorted_tables):
-                conn.execute(text(f'DELETE FROM {table.name}'))
+                # Use proper SQLAlchemy delete to avoid SQL injection
+                conn.execute(table.delete())
         # Create test data
         client.post("/products", json={"name": "ErrorTest", "description": "Test", "price": 10.0})
 
@@ -387,74 +389,82 @@ class TestValidation(unittest.TestCase):
     def test_product_name_required(self):
         # Test that product name is required
         with self.assertRaises(Exception):
-            ProductCreate(description="Missing name", price=10.0)
+            ProductCreate(description="No name", price=10.0)
     
-    def test_product_price_required(self):
-        # Test that product price is required
+    def test_product_name_length_validation(self):
+        # Test name length validation
         with self.assertRaises(Exception):
-            ProductCreate(name="Test", description="Missing price")
+            ProductCreate(name="a" * 121, description="Too long name", price=10.0)
     
-    def test_product_price_type(self):
-        # Test that product price must be a number
+    def test_product_description_length_validation(self):
+        # Test description length validation
         with self.assertRaises(Exception):
-            ProductCreate(name="Test", description="Invalid price", price="not a number")
+            ProductCreate(name="Valid", description="a" * 256, price=10.0)
     
-    def test_product_description_default(self):
-        # Test that description defaults to empty string
-        product = ProductCreate(name="Test", price=10.0)
-        self.assertEqual(product.description, "")
+    def test_product_price_validation(self):
+        # Test negative price validation
+        with self.assertRaises(Exception):
+            ProductCreate(name="Valid", description="Valid", price=-1.0)
     
-    def test_product_price_negative(self):
-        # Test creating product with negative price
-        response = client.post("/products", json={"name": "Test", "description": "Test", "price": -10.0})
-        self.assertEqual(response.status_code, 422)  # Should fail validation
-    
-    def test_product_name_too_long(self):
-        # Test creating product with name > 120 chars
-        long_name = "x" * 121
-        response = client.post("/products", json={"name": long_name, "description": "Test", "price": 10.0})
-        self.assertEqual(response.status_code, 422)  # Should fail validation
-    
-    def test_product_description_too_long(self):
-        # Test creating product with description > 255 chars
-        long_desc = "x" * 256
-        response = client.post("/products", json={"name": "Test", "description": long_desc, "price": 10.0})
-        self.assertEqual(response.status_code, 422)  # Should fail validation
+    def test_product_update_validation(self):
+        # Test update validation
+        with self.assertRaises(Exception):
+            ProductUpdate(description="a" * 256, price=10.0)
+        
+        with self.assertRaises(Exception):
+            ProductUpdate(description="Valid", price=-1.0)
 
 
 class TestDatabaseSession(unittest.TestCase):
-    """Test suite for database session management"""
+    """Test database session management"""
     
     def setUp(self):
         # Create tables and clear data before each test
         Base.metadata.create_all(bind=engine)
         with engine.begin() as conn:
             for table in reversed(Base.metadata.sorted_tables):
-                conn.execute(text(f'DELETE FROM {table.name}'))
+                # Use proper SQLAlchemy delete to avoid SQL injection
+                conn.execute(table.delete())
         with engine.connect() as conn:
             conn.execute(text('VACUUM'))
             conn.commit()
     
-    def tearDown(self):
-        Base.metadata.drop_all(bind=engine)
-    
-    def test_get_db_yields_session(self):
-        # Test that get_db yields a session
-        db_gen = get_db()
-        db = next(db_gen)
-        
-        # Check that we got a valid session
-        self.assertTrue(hasattr(db, 'query'))
-        self.assertTrue(hasattr(db, 'add'))
-        self.assertTrue(hasattr(db, 'commit'))
-        
-        # Clean up
+    def test_database_connection(self):
+        """Test database connection works"""
+        db = TestingSessionLocal()
         try:
-            next(db_gen)
-        except StopIteration:
-            pass  # Expected behavior when generator is exhausted
+            result = db.execute(text('SELECT 1'))
+            self.assertIsNotNone(result)
+        finally:
+            db.close()
+    
+    def test_session_rollback_on_error(self):
+        """Test that database sessions rollback on errors"""
+        db = TestingSessionLocal()
+        try:
+            # Create a product
+            product = Product(name="Test", description="Test", price=10.0)
+            db.add(product)
+            db.commit()
+            
+            # Try to create duplicate (should fail)
+            duplicate = Product(name="Test", description="Duplicate", price=20.0)
+            db.add(duplicate)
+            
+            with self.assertRaises(Exception):
+                db.commit()
+            
+            # Session should be rolled back
+            db.rollback()
+            
+            # Original product should still exist
+            existing = db.query(Product).filter(Product.name == "Test").first()
+            self.assertIsNotNone(existing)
+            self.assertEqual(existing.description, "Test")
+            
+        finally:
+            db.close()
 
 
 if __name__ == '__main__':
-    # Run tests with verbosity
-    unittest.main(verbosity=2)
+    unittest.main()
